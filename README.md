@@ -2,21 +2,21 @@
 
 Xiaomi Pad 6 (pipa) · MIUI 14 / Android 13 · SukiSU Ultra
 
-## İndirme (Google Drive)
+## İndirme ve güncelleme (GitHub Releases)
 
-Klasör: https://drive.google.com/drive/folders/1EfhlGo-y7mCivtLEjD-blDrF20c2BJEF
-→ `v2.23.4/` altında:
+Son sürüm: https://github.com/forcelandscape/ForceLandscape-AllApps/releases/latest
 
-| Dosya | Ne işe yarar |
-|-------|--------------|
-| **ForceLandscape-AllApps-v2.23.4.zip** | **KURULACAK DOSYA** (145 KB) |
-| `README.md` | Bu kılavuz |
-| `KOMUT-DENETIM-RAPORU.md` | Tüm komutların AOSP 13 ile karşılaştırması + 7 hata |
-| `KURULUM-VE-DOGRULAMA.md` | Adım adım kurulum |
-| `kaynak-dosyalar/` | Açılmış kaynak (incelemek için) |
+`ForceLandscape-AllApps-v2.23.4.zip` dosyasını sürümün **Assets** bölümünden
+indirip Magisk / KernelSU / APatch üzerinden modül olarak kurun. Önceki kurulu
+sürümlerde güncelleme adresi bulunmadığından bu ZIP'i bir kez elle kurmak gerekir.
+Sonrasında güncelleme kontrolü, destekleyen modül yöneticilerinde GitHub Releases
+üzerindeki `update.json` ile yapılır; bu işlem WebUI içinde ayrı bir güncelleyici değildir.
 
-Doğrudan indirme:
-https://drive.google.com/uc?export=download&id=1xtT71DT9ArzpCWo2oPiiG-wgsqvaEP7X
+Yeni sürüm yayımlarken `module.prop` sürümünü ve artan `versionCode` değerini,
+`update.json` içindeki sürüm, kod ve sürüme özel ZIP adresini güncelleyin. Yeni
+release'e ZIP, `update.json` ve `changelog.md` dosyalarını aynı isimlerle ekleyin
+ve sürümü latest olarak yayımlayın. Güncelleme kontrolü yalnızca yayımlanmış en son
+release'in dosyalarını kullanır.
 
 
 Dikey çalışan uygulamaları **tam ekran yataya** zorlar, kendi kendine yatay

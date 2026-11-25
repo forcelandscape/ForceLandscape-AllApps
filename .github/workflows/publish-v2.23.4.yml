@@ -1,0 +1,23 @@
+name: Publish v2.23.4 release assets
+
+on:
+  push:
+    branches:
+      - arena/36a10ae9-forcelandscape-allapps
+    paths:
+      - .github/workflows/publish-v2.23.4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v2.23.4 ForceLandscape-AllApps-v2.23.4.zip update.json changelog.md
+          gh release edit v2.23.4 --notes-file changelog.md
