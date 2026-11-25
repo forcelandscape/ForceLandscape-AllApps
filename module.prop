@@ -1,0 +1,6 @@
+id=force_landscape_all
+name=Force Landscape - All Apps
+version=v2.23.4
+versionCode=42
+author=Arena.ai Agent
+description=v2.23.4: "artik yalan soylemiyor" surumu - SAHA LOGLARIYLA bulunan 4 gercek hata. (1) MIUI Embedding servisi 'successful' diyerek YALAN soyluyordu: paket icin config yoksa update-rule/set-fixedOri yazimini sessizce yutuyor. Artik servisin KENDI dump-rule komutuyla geri okunup dogrulanir; config yoksa once enable/set-relaunch/set-scale ile hazirlanir. (2) BU YUZDEN mailbox butonu ters calisiyordu: 'ac' -> dosyaya yaziliyor, canli katman hic yazilmiyordu, arayuz 'kapali' diyordu. Artik ac/kapat ikisi de servisten okunarak dogrulanir ve canli=ok/YOK yazilir. (3) Yatay kural artik gercekten uygulaniyor: update-rule + set-fixedOri ikisi de yazilip splitRule+fixedOri GERI OKUNARAK dogrulanir; okunamazsa AOSP katmanina duser. (4) 'dogrulandi:gate=unknown' YALANI: ROM am compat state cevap vermiyorsa artik 'okunamadi' yazilir; change-id haritasi (174042980/180326787/203647190) config.conf ile ezilebilir ve arayuzde id'lerle birlikte gosterilir.
