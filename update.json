@@ -1,6 +1,6 @@
 {
   "version": "v2.23.5-test1",
   "versionCode": 43,
-  "zipUrl": "https://github.com/forcelandscape/ForceLandscape-AllApps/raw/refs/heads/arena/3cefd74e-forcelandscape-allapps/ForceLandscape-AllApps-v2.23.5-test1.zip",
-  "changelog": "https://raw.githubusercontent.com/forcelandscape/ForceLandscape-AllApps/arena/3cefd74e-forcelandscape-allapps/RELEASE-NOTES-v2.23.5-test1.md"
+  "zipUrl": "https://github.com/forcelandscape/ForceLandscape-AllApps/releases/download/v2.23.5-test1/ForceLandscape-AllApps-v2.23.5-test1.zip",
+  "changelog": "https://github.com/forcelandscape/ForceLandscape-AllApps/releases/download/v2.23.5-test1/changelog.md"
 }

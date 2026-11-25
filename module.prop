@@ -2,6 +2,6 @@ id=force_landscape_all
 name=Force Landscape - All Apps
 version=v2.23.5-test1
 versionCode=43
-updateJson=https://raw.githubusercontent.com/forcelandscape/ForceLandscape-AllApps/arena/3cefd74e-forcelandscape-allapps/update.json
+updateJson=https://github.com/forcelandscape/ForceLandscape-AllApps/releases/latest/download/update.json
 author=Arena.ai Agent
 description=Deneme surumu: toplu secim, yedek, izleyici ve uyumluluk duzeltmeleri. MIUI 14 cihaz testi gereklidir.

@@ -1,6 +1,6 @@
 # Force Landscape - All Apps v2.23.5-test1
 
-[ZIP indir / Download ZIP](https://github.com/forcelandscape/ForceLandscape-AllApps/raw/refs/heads/arena/3cefd74e-forcelandscape-allapps/ForceLandscape-AllApps-v2.23.5-test1.zip)
+[ZIP indir / Download ZIP](https://github.com/forcelandscape/ForceLandscape-AllApps/releases/download/v2.23.5-test1/ForceLandscape-AllApps-v2.23.5-test1.zip)
 
 ## Türkçe
 

@@ -1,0 +1,34 @@
+name: Publish v2.23.5-test1 release assets
+
+on:
+  push:
+    branches:
+      - arena/3cefd74e-forcelandscape-allapps
+    paths:
+      - .github/workflows/publish-test-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check package and release metadata
+        run: |
+          set -eu
+          python3 -m unittest discover -s tests -q
+          unzip -t ForceLandscape-AllApps-v2.23.5-test1.zip
+          cmp module.prop <(unzip -p ForceLandscape-AllApps-v2.23.5-test1.zip module.prop)
+          python3 -c 'import json; x=json.load(open("update.json")); assert x["version"] == "v2.23.5-test1" and x["versionCode"] == 43'
+          cp RELEASE-NOTES-v2.23.5-test1.md changelog.md
+          sha256sum ForceLandscape-AllApps-v2.23.5-test1.zip > SHA256SUMS.txt
+      - name: Upload required assets and publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release upload v2.23.5-test1 ForceLandscape-AllApps-v2.23.5-test1.zip update.json changelog.md SHA256SUMS.txt --clobber
+          gh release edit v2.23.5-test1 --notes-file RELEASE-NOTES-v2.23.5-test1.md --target "$GITHUB_SHA" --draft=false --latest
