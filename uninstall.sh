@@ -8,17 +8,10 @@ MODDIR=${0%/*}
 fl_log "uninstall.sh calisti: tum degisiklikler geri aliniyor"
 fl_restore
 
-# v1.9: XML yedegi ile yazilan compat override'ini geri al
+# Eski yedegi tum dosyaya geri yuklemek, kurulum sonrasi diger
+# kaynaklarin yazdigi override'lari siler. Mevcut dosyayi koru.
 XML=/data/misc/appcompat/compat_framework_overrides.xml
-if [ -f "$XML.fl.bak" ]; then
-    mv -f "$XML.fl.bak" "$XML" 2>/dev/null
-    chown 1000:1000 "$XML" 2>/dev/null
-    chmod 0640 "$XML" 2>/dev/null
-    echo " compat XML yedegi geri yuklendi: $XML"
-else
-    rm -f "$XML" 2>/dev/null
-    echo " compat XML dosyasi silindi: $XML"
-fi
+echo " compat XML toplu yedekten geri yuklenmedi; mevcut dosya korundu: $XML"
 # v2.8: MIUI orta-pencere prop'unu fabrika degerine dondur
 # (modul kaldirildiktan sonra "ortada kalan uygulama" davranisi geri gelmesin
 #  diye DEGIL; kullanici modulu kaldirinca sistem eski haline donsun diye)

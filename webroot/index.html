@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-store, must-revalidate">
 <meta http-equiv="pragma" content="no-cache">
-<title>Force Landscape v2.23.4</title>
+<title>Force Landscape v2.23.5-test1</title>
 <style>
 :root{
   --bg:#0e1116; --bg2:#151a22; --card:#1a2029; --line:#26303d; --txt:#e8eef7;
@@ -162,7 +162,7 @@ button{max-width:100%}
 <header>
   <div class="hrow">
     <div>
-      <div class="title">Force Landscape <span class="sub" id="ver">v2.23.4</span></div>
+      <div class="title">Force Landscape <span class="sub" id="ver">v2.23.5-test1</span></div>
       <div class="sub" id="hdev">cihaz bilgisi yükleniyor…</div>
     </div>
     <div class="spacer"></div>
@@ -355,8 +355,8 @@ function probeSpawn(cmd, waitMs){
     const finish = v => { if(done) return; done = true; try{ delete window[name]; }catch(e){} resolve(v); };
     try{
       window[name] = {
-        stdout: { emit: (ev, d)=>{ if(d !== undefined) out += (out ? "\n" : "") + String(d); } },
-        stderr: { emit: (ev, d)=>{ if(d !== undefined) err += (err ? "\n" : "") + String(d); } },
+        stdout: { emit: (ev, d)=>{ if(ev === "data" && d !== undefined) out += String(d); } },
+        stderr: { emit: (ev, d)=>{ if(ev === "data" && d !== undefined) err += String(d); } },
         emit: (ev, arg)=>{
           if(ev === "exit"){
             finish({ errno: Number(arg) || 0, stdout: out, stderr: err, spawn: true });
@@ -383,8 +383,8 @@ function execSpawn(cmd){
       reject(new Error("komut zaman aşımı (" + Math.round(CMD_TIMEOUT/1000) + " sn)"));
     }, CMD_TIMEOUT);
     window[name] = {
-      stdout: { emit: (ev, d)=>{ if(d !== undefined) out += (out ? "\n" : "") + String(d); } },
-      stderr: { emit: (ev, d)=>{ if(d !== undefined) err += (err ? "\n" : "") + String(d); } },
+      stdout: { emit: (ev, d)=>{ if(ev === "data" && d !== undefined) out += String(d); } },
+      stderr: { emit: (ev, d)=>{ if(ev === "data" && d !== undefined) err += String(d); } },
       emit: (ev, arg)=>{
         if(settled) return;
         if(ev === "exit"){
@@ -449,7 +449,7 @@ async function out(args){
   let t = r.stdout || "";
   const err = r.stderr || "";
   if(err && String(err).trim()) t += (t ? "\n" : "") + "[stderr] " + String(err).trim();
-  if(!t && r.errno) t = "(boş çıktı, kod " + r.errno + ")";
+  if(r.errno) throw new Error((t.trim() || "Komut başarısız") + " (çıkış kodu " + r.errno + ")");
   return t;
 }
 function kvParse(txt){
@@ -548,7 +548,7 @@ function appName(pkg){
 /* Yoneticiden (KernelSU/SukiSU) gercek uygulama adi, surumu ve ikonu.
    API yoksa sessizce atlanir; asagidaki sozluk/turetilmis ad kullanilir. */
 let MG = {};          // pkg -> {label, versionName, versionCode, isSystem}
-let UI_VER = "v2.23.4";       // bu sayfanın sürümü (arka uçla karşılaştırılır)
+let UI_VER = "v2.23.5-test1"; // bu sayfanın sürümü (arka uçla karşılaştırılır)
 /* v2.23: uygulama bazli yon kilidi (dikey / yatay / serbest) */
 let YON = {};          // pkg -> "dikey" | "yatay" | "serbest"
 let YON_OK = false;    // arka uc hala eski surum mu? (ozellik kapaliysa uyari) 
@@ -1677,9 +1677,9 @@ async function setAppMode(pkg, on){
     if(on){
       toast(nm + (gercek.indexOf("orta|") === 0
         ? " → ayar açıldı ama MIUI hâlâ ortada tutuyor (orta pencereyi kapat)"
-        : " → ekrana yayıldı"));
+        : gercek === "tam" ? " → tam ekran ölçüldü" : " → ayar uygulandı; pencere sonucu ölçülemedi"));
     } else {
-      toast(nm + " → eski hâline döndü");
+      toast(nm + " → oran override'ları sıfırlandı; önceki özel değerler doğrulanmadı");
     }
   }catch(e){
     toast("olmadı: " + (e.message || e));
@@ -2297,7 +2297,7 @@ const ACT = {
       const rr = await execRaw(payload);
       const ilk = String((rr && rr.stdout) || "").split("\n")[0] || "";
       await loadStatus(); await loadApps();
-      if(ilk.indexOf("OK|") !== 0) toast("yedek uygulanamadı: " + (ilk || "cevap yok"));
+      if(!rr || rr.errno || ilk.indexOf("OK|") !== 0) toast("yedek uygulanamadı: " + (ilk || (rr && rr.stderr) || "cevap yok"));
       else toast("yedek yüklendi ve uygulandı ✓");
     }catch(e){ toast(e.message||e); }
     busyEnd(); await render();

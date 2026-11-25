@@ -39,7 +39,9 @@ fi
 if [ -f "$MODDIR/watch.sh" ]; then
     _wo=$(sed -n 's/^WATCH_FULLSCREEN=//p' "$FL_CFG" 2>/dev/null | head -n 1)
     [ -n "$_wo" ] || _wo=true
-    if [ "$_wo" = "true" ]; then
+    if [ "$_wo" = "true" ] && [ "$(fl_watch_on)" = "acik" ]; then
+        fl_log "izleyici zaten calisiyor; ikinci surec baslatilmadi"
+    elif [ "$_wo" = "true" ]; then
         if [ -x "$MODDIR/watch.sh" ]; then _wch="$MODDIR/watch.sh"; else _wch="sh $MODDIR/watch.sh"; fi
         if command -v setsid >/dev/null 2>&1; then
             setsid $_wch >/dev/null 2>&1 < /dev/null &

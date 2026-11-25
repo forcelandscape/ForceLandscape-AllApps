@@ -99,7 +99,7 @@ FL_APPMODE_ST=$FL_DIR/appmode_state.txt   # pkg<TAB>ok|fail<TAB>yontem (v2.7)
 # Bu yuzden "ekrana yay" yapilsa bile oyun ortada kaliyordu. Asagidaki
 # prop false yapilinca MIUI gommesi tamamen kapanir.
 FL_MIUI_EMB_PROP=ro.config.miui_activity_embedding_enable
-FL_MODVER=v2.23.4
+FL_MODVER=v2.23.5-test1
 FL_TAB=$(printf '\t')            # gercek sekme karakteri (IFS icin)
 
 PATH=/system/bin:/system/xbin:/sbin:/data/adb/ksu/bin:$PATH
@@ -119,7 +119,7 @@ COMPAT_ID=174042936            # Android 13: FORCE_RESIZE_APP
 # disable PORTRAIT_ONLY kapiciyi kapatiyordu -> ozellik hic calismiyordu.
 FL_ID_GATE=${FL_ID_GATE:-174042980}        # OVERRIDE_MIN_ASPECT_RATIO (KAPICI)
 FL_ID_LARGE=${FL_ID_LARGE:-180326787}      # OVERRIDE_MIN_ASPECT_RATIO_LARGE
-FL_ID_MEDIUM=${FL_ID_MEDIUM:-180326787}
+FL_ID_MEDIUM=${FL_ID_MEDIUM:-180326845}
 FL_ID_PONLY=${FL_ID_PONLY:-203647190}      # ..._PORTRAIT_ONLY
 FL_ID_ANYORIENT=${FL_ID_ANYORIENT:-310816437}  # Android 14+
 COMPAT_BUDGET=120             # saniye (boot'u bekletmemek icin butce)
@@ -681,7 +681,7 @@ fl_builtin_skip() {
 fl_list_has() {
     FL_CTX=fl_list_has; FL_LINE=${LINENO:-0}
     [ -f "$1" ] || return 1
-    grep -qx "$2" "$1" 2>/dev/null
+    grep -qxF -- "$2" "$1" 2>/dev/null
 }
 
 # v2.23: paket adi akli kontrolu. Android paket adlari rakamla baslamaz;
@@ -701,17 +701,18 @@ fl_lists_clean() {
     FL_CTX=fl_lists_clean; FL_LINE=${LINENO:-0}
     for _lc_f in "$FL_FORCE" "$FL_NEVER" "$FL_APPMODE" "$FL_MB_LIST" "$FL_ORIENT_LIST"; do
         [ -f "$_lc_f" ] || continue
-        awk -F'\t' '{
+        if awk -F'\t' '{
             p = $1
             if (p == "") next
             if (p ~ /[^a-zA-Z0-9_.]/) next
             if (p ~ /^[0-9]/) next
             print
-        }' "$_lc_f" 2>/dev/null > "$_lc_f.lc.tmp"
-        if [ -s "$_lc_f.lc.tmp" ] || [ ! -s "$_lc_f" ]; then
-            cat "$_lc_f.lc.tmp" > "$_lc_f" 2>/dev/null
+        }' "$_lc_f" 2>/dev/null > "$_lc_f.lc.tmp"; then
+            mv -f "$_lc_f.lc.tmp" "$_lc_f" 2>/dev/null || return 1
+        else
+            rm -f "$_lc_f.lc.tmp"
+            return 1
         fi
-        rm -f "$_lc_f.lc.tmp"
     done
     return 0
 }
@@ -724,7 +725,7 @@ fl_pkg_installed() {
     [ -n "$1" ] || return 1
     _pi_l=$(pm list packages 2>/dev/null | sed 's/^package://')
     if [ -n "$_pi_l" ]; then
-        printf '%s\n' "$_pi_l" | grep -qx "$1" && return 0
+        printf '%s\n' "$_pi_l" | grep -qxF -- "$1" && return 0
         # -3 filtresi yuzunden sistem paketi gorunmemis olabilir: pm path dene
         pm path "$1" >/dev/null 2>&1 && return 0
         return 1
@@ -746,8 +747,10 @@ fl_list_add() {
 fl_list_del() {
     FL_CTX=fl_list_del; FL_LINE=${LINENO:-0}
     [ -f "$1" ] || return 0
-    grep -vx "$2" "$1" > "$1.tmp" 2>/dev/null
-    mv -f "$1.tmp" "$1" 2>/dev/null
+    grep -vxF -- "$2" "$1" > "$1.tmp" 2>/dev/null
+    _ld_rc=$?
+    [ "$_ld_rc" -le 1 ] || { rm -f "$1.tmp"; return 1; }
+    mv -f "$1.tmp" "$1" 2>/dev/null || return 1
     fl_maps_reset
     return 0
 }
@@ -1919,19 +1922,33 @@ fl_xml_upsert() {   # $1 dosya $2 paket $3 yeni satir -> ok|<dosya> | fail|<sebe
     awk -v p="$_xp" -v ins="$_xl" '
         { L[NR] = $0 }
         END {
-            last = 0
+            last = 0; found = 0; extra = ""
             for (i = NR; i >= 1; i--) {
                 if (L[i] ~ /^[ \t]*<\/[A-Za-z_-]+>[ \t]*$/) { last = i; break }
             }
+            if (!last || ins !~ /\/>[ \t]*$/) exit 1
+            for (i = 1; i <= NR; i++) {
+                if (L[i] ~ /<package[ \t]/ && index(L[i], "name=\"" p "\"") > 0) {
+                    if (++found > 1 || L[i] !~ /\/>[ \t]*$/) exit 1
+                    old = L[i]
+                    while (match(old, /[A-Za-z_][A-Za-z0-9_.:-]*="[^"]*"/)) {
+                        attr = substr(old, RSTART, RLENGTH)
+                        key = substr(attr, 1, index(attr, "=") - 1)
+                        if (index(" " ins, " " key "=") == 0) extra = extra " " attr
+                        old = substr(old, RSTART + RLENGTH)
+                    }
+                }
+            }
+            match(ins, /[ \t]*\/>[ \t]*$/)
+            ins = substr(ins, 1, RSTART - 1) extra " />"
             for (i = 1; i <= NR; i++) {
                 if (L[i] ~ /<package[ \t]/ && index(L[i], "name=\"" p "\"") > 0) continue
-                if (last > 0 && i == last) print ins
+                if (i == last) print ins
                 print L[i]
             }
-            if (last == 0) print ins
-        }' "$_xu" > "$_xt" 2>/dev/null || { rm -f "$_xt"; echo "fail|awk-hatasi"; return 1; }
+        }' "$_xu" > "$_xt" 2>/dev/null || { rm -f "$_xt"; echo "fail|xml-formati"; return 1; }
     [ -s "$_xt" ] || { rm -f "$_xt"; echo "fail|bos-cikti"; return 1; }
-    grep -qF -- "$_xl" "$_xt" 2>/dev/null || { rm -f "$_xt"; echo "fail|dogrulanamadi"; return 1; }
+    [ -n "$(fl_pkg_line "$_xt" "$_xp")" ] || { rm -f "$_xt"; echo "fail|dogrulanamadi"; return 1; }
     chown 1000:1000 "$_xt" 2>/dev/null
     chmod 0660 "$_xt" 2>/dev/null
     cat "$_xt" > "$_xu" 2>/dev/null || { rm -f "$_xt"; echo "fail|yazilamadi"; return 1; }
@@ -2087,8 +2104,8 @@ fl_yon_del() {
 # magisk modul guncellemesi, elle mudahale). yon.txt bossa yedekten geri yukle.
 fl_yon_restore() {
     FL_CTX=fl_yon_restore; FL_LINE=${LINENO:-0}
-    if [ -s "$FL_ORIENT_LIST" ]; then
-        # asil dosya dolu -> yedegi tazele
+    if [ -f "$FL_ORIENT_LIST" ]; then
+        # Mevcut bos dosya da kullanicinin gecerli secimidir.
         cmp -s "$FL_ORIENT_LIST" "$FL_ORIENT_BAK" 2>/dev/null || cp -f "$FL_ORIENT_LIST" "$FL_ORIENT_BAK" 2>/dev/null
         return 0
     fi
@@ -2105,7 +2122,7 @@ fl_yon_restore() {
 # yatay kural varsa -> yatay. Boylece dosya kaybi bile tamamen sessiz kalmaz.
 fl_yon_recover() {
     FL_CTX=fl_yon_recover; FL_LINE=${LINENO:-0}
-    [ -s "$FL_ORIENT_LIST" ] && return 0
+    [ -f "$FL_ORIENT_LIST" ] && return 0
     _yr_fix=$(fl_mb_cloud); [ -n "$_yr_fix" ] || _yr_fix=$(fl_mb_rom)
     _yr_emb=$(fl_emb_cloud); [ -n "$_yr_emb" ] || _yr_emb=$(fl_emb_rom)
     [ -n "$_yr_fix" ] || return 0
@@ -3059,7 +3076,7 @@ fl_id_should_off() {
 #   OVERRIDE_MIN_ASPECT_RATIO (KAPICI) ......... 174042980
 #   OVERRIDE_MIN_ASPECT_RATIO_LARGE (16:9) ..... 180326787
 #   OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY .... 203647190
-#   OVERRIDE_MIN_ASPECT_RATIO_MEDIUM ........... 180326787 (A13'te LARGE ile ayni aile)
+#   OVERRIDE_MIN_ASPECT_RATIO_MEDIUM ........... 180326845 (AOSP Android 13)
 #   OVERRIDE_ANY_ORIENTATION_TO_USER (A14+) .... 310816437
 # ESKI HATA: her ad "${COMPAT_ID}" (174042936) degerine esleniyordu. Yani
 # "enable LARGE" + "disable PORTRAIT_ONLY" AYNI change id'yi yaziyordu ve
@@ -3072,7 +3089,7 @@ fl_id_num() {   # $1 kimlik adi -> change id (sayisal)
         FORCE_RESIZE_APP)                        echo "${COMPAT_ID:-174042936}" ;;
         OVERRIDE_MIN_ASPECT_RATIO)               echo "${FL_ID_GATE:-174042980}" ;;
         OVERRIDE_MIN_ASPECT_RATIO_LARGE)         echo "${FL_ID_LARGE:-180326787}" ;;
-        OVERRIDE_MIN_ASPECT_RATIO_MEDIUM)        echo "${FL_ID_MEDIUM:-180326787}" ;;
+        OVERRIDE_MIN_ASPECT_RATIO_MEDIUM)        echo "${FL_ID_MEDIUM:-180326845}" ;;
         OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY) echo "${FL_ID_PONLY:-203647190}" ;;
         OVERRIDE_ANY_ORIENTATION_TO_USER)        echo "${FL_ID_ANYORIENT:-310816437}" ;;
         *)  # bilinmeyen ad: ROM'un kendi haritasindan oku, yoksa kapici
@@ -3535,8 +3552,12 @@ fl_am_cmd() {   # $1 enable|disable|reset  $2 id  $3 paket ; basarili -> stdout:
     _ac_try() {   # $1 etiket ; geri kalan = komut
         _at_l=$1; shift
         _at_o=$("$@" 2>&1 </dev/null); _at_rc=$?
+        if [ "$_at_rc" -ne 0 ]; then
+            fl_evt WARN "$*" "$_at_rc" "$_at_o" "$_ap_evt" "yontem=$_at_l denendi, olmadi"
+            return 1
+        fi
         case "$_at_o" in
-            *"nknown"*|*"rror"*|*"xception"*|*"ailed"*|*"ot found"*|*"Usage"*|"")
+            *"nknown"*|*"rror"*|*"xception"*|*"ailed"*|*"ot found"*|*"Usage"*|*"not known yet"*|*"could have no effect"*)
                 fl_evt WARN "$*" "$_at_rc" "$_at_o" "$_ap_evt" "yontem=$_at_l denendi, olmadi"
                 return 1 ;;
             *)  fl_log "   compat yontemi tuttu: $_at_l ($*)"
@@ -3650,11 +3671,15 @@ fl_appmode_clear() {   # $1 paket -> her seyi fabrika degerine dondur
             if fl_am_cmd reset "$_id" "$_ap" > /dev/null 2>&1; then _n=$((_n + 1)); else _f=$((_f + 1)); fi
         fi
     done
-    # PORTRAIT_ONLY varsayilan olarak ACIK
-    fl_am_cmd enable OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY "$_ap" > /dev/null 2>&1
+    # Varsayilani tahmin ederek enable yazma: override'i kaldir.
+    if fl_am_cmd reset OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY "$_ap" > /dev/null 2>&1; then
+        _n=$((_n + 1))
+    else
+        _f=$((_f + 1))
+    fi
     # v2.14: "yay" kapatmak SADECE oran katmanini geri alir. MIUI mailbox /
     # yatay kurali ayri katmandir; onu silen yol kapat-hepsi / geri-al'dir.
-    if [ "$_f" -gt 0 ]; then echo "kismi|reset:$_n hata:$_f"; else echo "ok|reset:$_n"; fi
+    if [ "$_f" -gt 0 ]; then echo "kismi|reset:$_n hata:$_f"; return 1; else echo "ok|reset:$_n"; fi
 }
 
 fl_appmode_state_set() {   # pkg  ok|fail  yontem
@@ -3917,7 +3942,6 @@ fl_apply() {
     # Ikisi de denenir; biri desteklenmiyorsa digeri devam eder (asla olumcul degil).
     fl_run wm set-multi-window-config --supportsNonResizable 1
     fl_log "  multi-window: $(wm get-multi-window-config 2>&1 | tr '\n' ' ')"
-    fl_run settings put global force_resizable_activities 1
     fl_run settings put global enable_non_resizable_multi_window 1
 
     # 3) Mod secimi

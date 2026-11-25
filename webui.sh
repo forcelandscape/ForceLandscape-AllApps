@@ -10,6 +10,11 @@
 #  "|" ayirici, TAB ayirici: apps listesi.
 # ============================================================
 
+# Yedek verisini herhangi bir hazirlik komutu stdin'i okuyabilmeden al.
+# Sistem komutlarinin /dev/null korumasi yerinde kalir.
+if [ "$1" = "restore-backup" ]; then
+    _rs_in=$(cat) || { echo "HATA|yedek-okunamadi"; exit 1; }
+fi
 MODDIR=${0%/*}
 [ -f "$MODDIR/landscape.sh" ] || MODDIR=/data/adb/modules/force_landscape_all
 . "$MODDIR/landscape.sh"
@@ -185,9 +190,9 @@ set)  # set <paket> <force|never|auto>
     fl_pkg_installed "$_p" >/dev/null 2>&1
     if [ "$?" = "1" ]; then echo "HATA|paket-kurulu-degil: $_p"; exit 1; fi
     case "$_v" in
-        force) fl_list_add "$FL_FORCE" "$_p"; fl_list_del "$FL_NEVER" "$_p" ;;
-        never) fl_list_add "$FL_NEVER" "$_p"; fl_list_del "$FL_FORCE" "$_p" ;;
-        auto)  fl_list_del "$FL_FORCE" "$_p"; fl_list_del "$FL_NEVER" "$_p" ;;
+        force) (fl_list_add "$FL_FORCE" "$_p") && (fl_list_del "$FL_NEVER" "$_p") || { echo "HATA|liste-yazilamadi"; exit 1; } ;;
+        never) (fl_list_add "$FL_NEVER" "$_p") && (fl_list_del "$FL_FORCE" "$_p") || { echo "HATA|liste-yazilamadi"; exit 1; } ;;
+        auto)  (fl_list_del "$FL_FORCE" "$_p") && (fl_list_del "$FL_NEVER" "$_p") || { echo "HATA|liste-yazilamadi"; exit 1; } ;;
         *) echo "HATA|gecersiz deger: $_v"; exit 1 ;;
     esac
     # v2.8 BUYUK DUZELTME: "dokunma/otomatik" secilince once uygulanmis
@@ -221,7 +226,7 @@ set)  # set <paket> <force|never|auto>
             ;;
     esac
     fl_log "webui: $_p -> $_v ($_rv)"
-    fl_cache_update_one "$_p"
+    (fl_cache_update_one "$_p")
     echo "OK|$_p|$_v|$_rv"
     ;;
 
@@ -384,21 +389,14 @@ revert-all)   # her seyi geri al + dogrula (tek dugme)
     # v2.14: FL_MB_LIST de taranir. Eskiden yalnizca Force liste/done/
     # ekrana-yay listeleri taranıyordu; sadece mailbox'i degistirilmis
     # (Force'a girmemis) paketlerin kural satirlari sistemde kaliyordu.
-    for _p in $(cat "$FL_FORCE" "$FL_DONE" "$FL_APPMODE" "$FL_MB_LIST" 2>/dev/null | sort -u); do
+    for _p in $( { cat "$FL_FORCE" "$FL_DONE" "$FL_APPMODE" "$FL_MB_LIST" 2>/dev/null; cut -f1 "$FL_ORIENT_LIST" 2>/dev/null; } | sort -u); do
         [ -n "$_p" ] || continue
         _n=$((_n + 1))
         _r=$(fl_revert_pkg "$_p")
         case "$_r" in OK*) ;; *) _hata="$_hata,$_p" ;; esac
     done
-    fl_list_clear "$FL_FORCE" 2>/dev/null
-    fl_list_clear "$FL_APPMODE" 2>/dev/null
-    fl_list_clear "$FL_MB_LIST" 2>/dev/null
-    : > "$FL_WANT" 2>/dev/null
-    _x=/data/misc/appcompat/compat_framework_overrides.xml
-    # v2.14: overrides XML'i sifirdan YAZILMAZ; kurulumda yedeği alinmis
-    # baslangic (.fl.bak) geri konur. Eski kod head'i silip modulden
-    # once sistemde var olan override'lari da yok ediyordu.
-    [ -f "${_x}.fl.bak" ] && cp -f "${_x}.fl.bak" "$_x" 2>/dev/null
+    # Tum dosyayi eski yedekle degistirmek, sonradan diger uygulamalarin
+    # ekledigi override'lari siler. Paket bazli sonuc ve basarisiz kayitlari koru.
     echo "temizlenen|$_n"
     if [ -n "$_hata" ]; then
         echo "HATA|kalan:${_hata#,}"
@@ -529,7 +527,10 @@ mailbox)  # mailbox <paket> <ac|kapat|durum>  -> MIUI ortadaki sutunu
             _r=$(fl_mb_write2 "$_p" false 2>/dev/null)
             case "$_r" in
                 fail*) _r=$(fl_mb_set "$_p" false) ;;
-                *)     fl_mb_unsave "$_p" ;;
+            esac
+            case "$_r" in
+                ok*) fl_mb_unsave "$_p" ;;
+                *) echo "HATA|kural-dosyasi|$_r"; exit 1 ;;
             esac
             if fl_miui_cmd_mailbox "$_p" false; then
                 _live=ok
@@ -629,8 +630,13 @@ appmode)  # appmode <paket> <on|off>   -> "ekrana yay" (komple yatay/tam ekran)
             esac
             ;;
         off|0|false)
-            fl_appmode_del "$_p"
             _r=$(fl_appmode_clear "$_p" 2>/dev/null)
+            case "$_r" in
+                ok*) fl_appmode_del "$_p" ;;
+                *) fl_appmode_state_set "$_p" fail "$_r"
+                   fl_cache_update_one "$_p"
+                   echo "HATA|$_p|geri-alma-kismi|$_r"; exit 1 ;;
+            esac
             fl_appmode_state_set "$_p" ok "geri-alindi"
             am force-stop "$_p" > /dev/null 2>&1
             fl_log "webui: ekrana-yay KAPAT $_p"
@@ -800,26 +806,23 @@ export) # secimleri yaz (yedek almak icin kopyala)
 setmany) # setmany <force|never|auto> <paket...>
     # v2.14: toplu secim de ANINDA uygulanir/geri alinir. Eskiden sadece
     # listeye yaziliyordu; "Gorunenleri zorla/birak" hicbir sey yapmiyordu.
-    _v=$2; shift 2
-    case "$_v" in force|never|auto) : ;; *) echo "HATA|gecersiz: $_v"; exit 1 ;; esac
-    _c=0; _ok=0; _fail=""
-    for _p in "$@"; do
-        [ -n "$_p" ] || continue
-        _c=$((_c + 1))
-        case "$_v" in
-            force)
-                fl_list_add "$FL_FORCE" "$_p"; fl_list_del "$FL_NEVER" "$_p"
-                fl_force_apply "$_p" >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-            never)
-                fl_revert_pkg "$_p" never >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-            auto)
-                fl_revert_pkg "$_p" >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-        esac
-        fl_cache_update_one "$_p"
+    _batch_mode=$2; shift 2
+    case "$_batch_mode" in force|never|auto) : ;; *) echo "HATA|gecersiz: $_batch_mode"; exit 1 ;; esac
+    _batch_count=0; _batch_ok=0; _batch_fail=""
+    for _batch_pkg in "$@"; do
+        [ -n "$_batch_pkg" ] || continue
+        _batch_count=$((_batch_count + 1))
+        # Tekli yol ayri surecte calisir: POSIX sh fonksiyonlarinin global
+        # degiskenleri donguyu bozamaz ve iki yol ayni davranisi paylasir.
+        if sh "$MODDIR/webui.sh" set "$_batch_pkg" "$_batch_mode" >/dev/null 2>&1; then
+            _batch_ok=$((_batch_ok + 1))
+        else
+            _batch_fail="$_batch_fail $_batch_pkg"
+        fi
     done
-    fl_log "webui: setmany $_v ($_ok/$_c tamam${_fail:+, kalan:$_fail})"
-    if [ -n "$_fail" ]; then echo "HATA|$_v|$_ok/$_c|kalan:$_fail"; exit 1; fi
-    echo "OK|$_v|$_c"
+    fl_log "webui: setmany $_batch_mode ($_batch_ok/$_batch_count tamam${_batch_fail:+, kalan:$_batch_fail})"
+    if [ -n "$_batch_fail" ]; then echo "HATA|$_batch_mode|$_batch_ok/$_batch_count|kalan:$_batch_fail"; exit 1; fi
+    echo "OK|$_batch_mode|$_batch_count"
     ;;
 
 # ------------------------------------------------------------
@@ -1296,7 +1299,21 @@ restore-backup)   # stdin'den yedek okur + hepsini UYGULAR
     # degisken EZILIYOR, dongu "0" paketini uygulamaya calisiyordu
     # (log: "force-apply(miui): 0"). POSIX sh'de degiskenler globaldir.
     # Artik her degisken _rs_ onekiyle benzersiz.
-    _rs_in=$(cat 2>/dev/null)
+    # Girdi fl_prepare oncesinde okunmustur; bos/bozuk yedek mevcut
+    # listeleri sifirlayamaz. Kayit degerlerini config'e yazmadan dogrula.
+    if ! printf '%s\n' "$_rs_in" | awk -F'|' '
+        NR == 1 { if ($1 != "#FORCE_LANDSCAPE_BACKUP" || NF < 2) exit 1; next }
+        /^$/ { next }
+        $1 == "#mod" { if (NF != 2 || $2 !~ /^(smart|whitelist|all|off)$/) exit 1; next }
+        $1 == "#yon" { if (NF != 2 || $2 !~ /^(sensor|lock|off|auto)$/) exit 1; next }
+        $1 == "force" || $1 == "never" || $1 == "appmode" || $1 == "mailbox" {
+            if (NF != 2 || $2 !~ /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$/) exit 1; next
+        }
+        $1 == "uygulamayon" {
+            if (NF != 3 || $2 !~ /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$/ || $3 !~ /^(dikey|yatay|serbest)$/) exit 1; next
+        }
+        { exit 1 }
+    '; then echo "HATA|gecersiz-yedek|mevcut-secimler-korundu"; exit 1; fi
     # v2.14: eski kod listeleri yazip hicbir sey uygulamiyordu
     # (force pakete hicbir katman gitmiyordu). Artik her paket tipine
     # gore gercekten uygulanir; yon ayari da aninda gecer.
@@ -1315,11 +1332,13 @@ restore-backup)   # stdin'den yedek okur + hepsini UYGULAR
     [ -n "$_rs_md" ] && cfg_set COMPAT_MODE "$_rs_md"
     [ -n "$_rs_yn" ] && cfg_set ROTATION_MODE "$_rs_yn"
     [ -f "$FL_CFG" ] && . "$FL_CFG"
-    for _rs_v in $_rs_n; do fl_revert_pkg "$_rs_v" never >/dev/null 2>&1; done
-    for _rs_v in $_rs_f; do fl_force_apply "$_rs_v" >/dev/null 2>&1; done
+    _rs_fail=""
+    for _rs_v in $_rs_n; do (fl_revert_pkg "$_rs_v" never >/dev/null 2>&1) || _rs_fail="$_rs_fail never:$_rs_v"; done
+    for _rs_v in $_rs_f; do (fl_force_apply "$_rs_v" >/dev/null 2>&1) || _rs_fail="$_rs_fail force:$_rs_v"; done
+    for _rs_v in $_rs_a; do (fl_appmode_apply "$_rs_v" >/dev/null 2>&1) || _rs_fail="$_rs_fail appmode:$_rs_v"; done
     for _rs_v in $_rs_b; do
-        fl_list_has "$FL_FORCE" "$_rs_v" || fl_mb_save "$_rs_v"
-        fl_mb_write2 "$_rs_v" true >/dev/null 2>&1 && fl_mb_save "$_rs_v"
+        _rs_mb=$(fl_mb_write2 "$_rs_v" true 2>/dev/null)
+        case "$_rs_mb" in ok*) fl_mb_save "$_rs_v" ;; *) _rs_fail="$_rs_fail mailbox:$_rs_v" ;; esac
     done
     # v2.23: uygulama bazli yon secimlerini geri yukle
     _rs_yz=$(printf '%s\n' "$_rs_in" | awk -F'|' '$1=="uygulamayon"&&$2!=""{print $2"\t"$3}')
@@ -1331,12 +1350,15 @@ restore-backup)   # stdin'den yedek okur + hepsini UYGULAR
         while IFS=$FL_TAB read -r _rs_yp _rs_yv; do
             [ -n "$_rs_yp" ] || continue
             [ -n "$_rs_yv" ] || continue
-            fl_yon_write "$_rs_yp" "$_rs_yv" >/dev/null 2>&1
+            (fl_yon_write "$_rs_yp" "$_rs_yv" >/dev/null 2>&1) || _rs_fail="$_rs_fail yon:$_rs_yp"
         done < "$FL_DIR/.rs_yon.tmp"
         rm -f "$FL_DIR/.rs_yon.tmp"
     fi
     fl_apps_cache_build > /dev/null 2>&1
-    [ -n "$_rs_yn" ] && fl_apply_orientation "$_rs_yn" >/dev/null 2>&1
+    if [ -n "$_rs_yn" ]; then
+        (fl_apply_orientation "$_rs_yn" >/dev/null 2>&1) || _rs_fail="$_rs_fail cihaz-yonu"
+    fi
+    [ -z "$_rs_fail" ] || { echo "HATA|yedek-kismen-uygulandi|$_rs_fail"; exit 1; }
     _rs_yc=0; [ -f "$FL_ORIENT_LIST" ] && _rs_yc=$(grep -c . "$FL_ORIENT_LIST" 2>/dev/null)
     case "$_rs_yc" in ''|*[!0-9]*) _rs_yc=0 ;; esac
     echo "OK|$(fl_count "$FL_FORCE")|$(fl_count "$FL_NEVER")|$(fl_appmode_count)|yon=$_rs_yc"

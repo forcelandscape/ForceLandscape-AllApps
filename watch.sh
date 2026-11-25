@@ -21,7 +21,7 @@ _want=$(sed -n 's/^WATCH_FULLSCREEN=//p' "$FL_CFG" 2>/dev/null | head -n 1)
 [ -n "$_want" ] || _want=true
 if [ "$_want" != "true" ]; then
     say "kapali (WATCH_FULLSCREEN=false)"
-    rm -f "$FL_DIR/watch.pid" 2>/dev/null
+    [ "$(cat "$FL_DIR/watch.pid" 2>/dev/null)" = "$$" ] && rm -f "$FL_DIR/watch.pid" 2>/dev/null
     exit 0
 fi
 say "basladi (pid $$)"
@@ -32,6 +32,9 @@ _n=0
 while :; do
     # modul devre disi birakildiysa cik
     [ -f "$MODDIR/disable" ] && { say "modul devre disi -> cikiliyor"; break; }
+    # PID dosyasini kaybetmis eski izleyiciler de kapatma istegini gorur.
+    _want=$(sed -n 's/^WATCH_FULLSCREEN=//p' "$FL_CFG" 2>/dev/null | head -n 1)
+    [ "$_want" = "false" ] && { say "ayar kapali -> cikiliyor"; break; }
     # v2.10: ActivityRecord{1a2b u0 com.pkg/.Act} -> com.pkg
     _dd=$(dumpsys activity activities 2>/dev/null | tr -d '\r')
     _fg=$(printf '%s\n' "$_dd" | grep -m1 -E 'topResumedActivity|mResumedActivity' | \
@@ -60,6 +63,6 @@ while :; do
     fi
     sleep 3
 done
-rm -f "$FL_DIR/watch.pid" 2>/dev/null
+[ "$(cat "$FL_DIR/watch.pid" 2>/dev/null)" = "$$" ] && rm -f "$FL_DIR/watch.pid" 2>/dev/null
 say "bitti (toplam $_n tam ekran)"
 exit 0
