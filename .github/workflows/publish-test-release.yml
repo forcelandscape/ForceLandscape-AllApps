@@ -1,12 +1,12 @@
-name: Publish v2.23.5-test1 release assets
+name: Publish module release
 
 on:
   push:
     branches:
       - arena/3cefd74e-forcelandscape-allapps
     paths:
+      - module.prop
       - .github/workflows/publish-test-release.yml
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,19 +16,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check package and release metadata
+      - name: Validate package and update metadata
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
+          version=$(sed -n 's/^version=//p' module.prop)
+          code=$(sed -n 's/^versionCode=//p' module.prop)
+          zip="ForceLandscape-AllApps-${version}.zip"
+          notes="RELEASE-NOTES-${version}.md"
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]
+          [[ "$code" =~ ^[0-9]+$ ]]
+          test -f "$zip" && test -f "$notes"
           python3 -m unittest discover -s tests -q
-          unzip -t ForceLandscape-AllApps-v2.23.5-test1.zip
-          cmp module.prop <(unzip -p ForceLandscape-AllApps-v2.23.5-test1.zip module.prop)
-          python3 -c 'import json; x=json.load(open("update.json")); assert x["version"] == "v2.23.5-test1" and x["versionCode"] == 43'
-          cp RELEASE-NOTES-v2.23.5-test1.md changelog.md
-          sha256sum ForceLandscape-AllApps-v2.23.5-test1.zip > SHA256SUMS.txt
-      - name: Upload required assets and publish draft
+          for f in *.sh; do sh -n "$f"; done
+          unzip -t "$zip"
+          for f in module.prop landscape.sh service.sh uninstall.sh watch.sh webui.sh webroot/index.html; do
+            cmp "$f" <(unzip -p "$zip" "$f")
+          done
+          VERSION="$version" CODE="$code" python3 -c 'import json, os; x=json.load(open("update.json")); v=os.environ["VERSION"]; assert x["version"] == v and x["versionCode"] == int(os.environ["CODE"]); assert x["zipUrl"].endswith("/" + v + "/ForceLandscape-AllApps-" + v + ".zip"); assert x["changelog"].endswith("/" + v + "/changelog.md")'
+          cp "$notes" changelog.md
+          sha256sum "$zip" > SHA256SUMS.txt
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "ZIP=$zip" >> "$GITHUB_ENV"
+          echo "NOTES=$notes" >> "$GITHUB_ENV"
+      - name: Create draft, upload assets and publish
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          set -eu
-          gh release upload v2.23.5-test1 ForceLandscape-AllApps-v2.23.5-test1.zip update.json changelog.md SHA256SUMS.txt --clobber
-          gh release edit v2.23.5-test1 --notes-file RELEASE-NOTES-v2.23.5-test1.md --target "$GITHUB_SHA" --draft=false --latest
+          set -euo pipefail
+          if gh release view "$VERSION" --json isDraft >/dev/null 2>&1; then
+            draft=$(gh release view "$VERSION" --json isDraft --jq .isDraft)
+            if [ "$draft" != true ]; then echo "Release already published; refusing to overwrite."; exit 1; fi
+          else
+            gh release create "$VERSION" --draft --target "$GITHUB_SHA" --title "ForceLandscape $VERSION — BlackDamage (Test)" --notes-file "$NOTES"
+          fi
+          gh release upload "$VERSION" "$ZIP" update.json changelog.md SHA256SUMS.txt --clobber
+          gh release edit "$VERSION" --notes-file "$NOTES" --target "$GITHUB_SHA" --draft=false --latest

@@ -1,22 +1,14 @@
-# Force Landscape - All Apps  |  v2.23.4
+# Force Landscape - All Apps | v2.23.5-test2
+
+Yapımcı / maintainer: **BlackDamage**
 
 Xiaomi Pad 6 (pipa) · MIUI 14 / Android 13 · SukiSU Ultra
 
-## İndirme (Google Drive)
+## İndirme
 
-Klasör: https://drive.google.com/drive/folders/1EfhlGo-y7mCivtLEjD-blDrF20c2BJEF
-→ `v2.23.4/` altında:
+[GitHub Releases — en güncel sürüm](https://github.com/forcelandscape/ForceLandscape-AllApps/releases/latest)
 
-| Dosya | Ne işe yarar |
-|-------|--------------|
-| **ForceLandscape-AllApps-v2.23.4.zip** | **KURULACAK DOSYA** (145 KB) |
-| `README.md` | Bu kılavuz |
-| `KOMUT-DENETIM-RAPORU.md` | Tüm komutların AOSP 13 ile karşılaştırması + 7 hata |
-| `KURULUM-VE-DOGRULAMA.md` | Adım adım kurulum |
-| `kaynak-dosyalar/` | Açılmış kaynak (incelemek için) |
-
-Doğrudan indirme:
-https://drive.google.com/uc?export=download&id=1xtT71DT9ArzpCWo2oPiiG-wgsqvaEP7X
+Bu sürüm test sürümüdür; son değişiklikler gerçek cihazda henüz doğrulanmadı. Kurulum öncesinde modül ve sistem ayarlarınızın yedeğini saklayın. Önceki sürümde updateJson yoksa yeni ZIP'i bir kez SukiSU'dan yerel yüklemek gerekir.
 
 
 Dikey çalışan uygulamaları **tam ekran yataya** zorlar, kendi kendine yatay
