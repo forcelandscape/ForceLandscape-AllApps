@@ -180,7 +180,7 @@ apps-refresh)   # listeyi simdi yeniden hesapla (secim/mod degisince)
 # ------------------------------------------------------------
 set)  # set <paket> <force|never|auto>
     _p=$2; _v=$3
-    [ -n "$_p" ] || { echo "HATA|paket yok"; exit 1; }
+    fl_pkg_sane "$_p" || { echo "HATA|gecersiz paket: $_p"; exit 1; }
     # v2.23: kurulu olmayan paketi listeye yazma (arayuzde hayalet satir)
     fl_pkg_installed "$_p" >/dev/null 2>&1
     if [ "$?" = "1" ]; then echo "HATA|paket-kurulu-degil: $_p"; exit 1; fi
@@ -629,8 +629,13 @@ appmode)  # appmode <paket> <on|off>   -> "ekrana yay" (komple yatay/tam ekran)
             esac
             ;;
         off|0|false)
+            _r=$(fl_appmode_clear "$_p" 2>/dev/null); _clear_rc=$?
+            case "$_clear_rc:$_r" in
+                0:ok\|*) : ;;
+                *) fl_appmode_state_set "$_p" fail "geri-alinamadi"
+                   echo "HATA|$_p|ekrana-yay geri alinamadi: $_r"; exit 1 ;;
+            esac
             fl_appmode_del "$_p"
-            _r=$(fl_appmode_clear "$_p" 2>/dev/null)
             fl_appmode_state_set "$_p" ok "geri-alindi"
             am force-stop "$_p" > /dev/null 2>&1
             fl_log "webui: ekrana-yay KAPAT $_p"
@@ -802,24 +807,22 @@ setmany) # setmany <force|never|auto> <paket...>
     # listeye yaziliyordu; "Gorunenleri zorla/birak" hicbir sey yapmiyordu.
     _v=$2; shift 2
     case "$_v" in force|never|auto) : ;; *) echo "HATA|gecersiz: $_v"; exit 1 ;; esac
-    _c=0; _ok=0; _fail=""
-    for _p in "$@"; do
-        [ -n "$_p" ] || continue
-        _c=$((_c + 1))
-        case "$_v" in
-            force)
-                fl_list_add "$FL_FORCE" "$_p"; fl_list_del "$FL_NEVER" "$_p"
-                fl_force_apply "$_p" >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-            never)
-                fl_revert_pkg "$_p" never >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-            auto)
-                fl_revert_pkg "$_p" >/dev/null 2>&1 && _ok=$((_ok + 1)) || _fail="$_fail $_p" ;;
-        esac
-        fl_cache_update_one "$_p"
+    # Ayni tek-paket yolunu kullan: secim/geri alma semantigi farkli olmasin.
+    # Ayri surec, landscape.sh fonksiyonlarinin global degiskenlerinin
+    # dongunun paket, mod ve sayaclarini ezmesini de onler.
+    _bulk_mode=$_v; _bulk_count=0; _bulk_ok=0; _bulk_fail=""
+    for _bulk_pkg in "$@"; do
+        [ -n "$_bulk_pkg" ] || continue
+        _bulk_count=$((_bulk_count + 1))
+        if sh "$0" set "$_bulk_pkg" "$_bulk_mode" >/dev/null 2>&1; then
+            _bulk_ok=$((_bulk_ok + 1))
+        else
+            _bulk_fail="$_bulk_fail $_bulk_pkg"
+        fi
     done
-    fl_log "webui: setmany $_v ($_ok/$_c tamam${_fail:+, kalan:$_fail})"
-    if [ -n "$_fail" ]; then echo "HATA|$_v|$_ok/$_c|kalan:$_fail"; exit 1; fi
-    echo "OK|$_v|$_c"
+    fl_log "webui: setmany $_bulk_mode ($_bulk_ok/$_bulk_count tamam${_bulk_fail:+, kalan:$_bulk_fail})"
+    if [ -n "$_bulk_fail" ]; then echo "HATA|$_bulk_mode|$_bulk_ok/$_bulk_count|kalan:$_bulk_fail"; exit 1; fi
+    echo "OK|$_bulk_mode|$_bulk_count"
     ;;
 
 # ------------------------------------------------------------
@@ -1044,7 +1047,12 @@ pause)   # modulu gecici devre disi birak (acilista hicbir sey yapmaz)
     _pd="$(fl_moddir)/disable"
     touch "$_pd" 2>/dev/null
     _wp=$(cat "$FL_DIR/watch.pid" 2>/dev/null)
-    [ -n "$_wp" ] && kill "$_wp" 2>/dev/null
+    case "$_wp" in
+        ''|*[!0-9]*) : ;;
+        *) if [ -r "/proc/$_wp/cmdline" ] && tr '\0' ' ' < "/proc/$_wp/cmdline" 2>/dev/null | grep -q 'watch.sh'; then
+               kill "$_wp" 2>/dev/null
+           fi ;;
+    esac
     rm -f "$FL_DIR/watch.pid" 2>/dev/null
     fl_restore > /dev/null 2>&1
     if [ -f "$_pd" ]; then
@@ -1157,11 +1165,14 @@ appinfo) # appinfo <paket>
 app-start|app-stop|app-restart) # uygulamayi ac / durdur / yeniden baslat
     _p=$2
     [ -n "$_p" ] || { echo "HATA|paket yok"; exit 1; }
+    fl_pkg_sane "$_p" || { echo "HATA|gecersiz paket: $_p"; exit 1; }
     case "$1" in
         app-start)   fl_app_start   "$_p" ;;
         app-stop)    fl_app_stop    "$_p" ;;
         app-restart) fl_app_restart "$_p" ;;
     esac
+    _app_rc=$?
+    if [ "$_app_rc" != 0 ]; then echo "HATA|$_p|$1 basarisiz (kod $_app_rc)"; exit 1; fi
     sleep 1
     _pid=$(pidof "$_p" 2>/dev/null | tr ' ' ',')
     case "$_pid" in ''|' ') echo "OK|$_p|kapali|" ;; *) echo "OK|$_p|calisiyor|$_pid" ;; esac

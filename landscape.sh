@@ -119,7 +119,7 @@ COMPAT_ID=174042936            # Android 13: FORCE_RESIZE_APP
 # disable PORTRAIT_ONLY kapiciyi kapatiyordu -> ozellik hic calismiyordu.
 FL_ID_GATE=${FL_ID_GATE:-174042980}        # OVERRIDE_MIN_ASPECT_RATIO (KAPICI)
 FL_ID_LARGE=${FL_ID_LARGE:-180326787}      # OVERRIDE_MIN_ASPECT_RATIO_LARGE
-FL_ID_MEDIUM=${FL_ID_MEDIUM:-180326787}
+FL_ID_MEDIUM=${FL_ID_MEDIUM:-180326845}
 FL_ID_PONLY=${FL_ID_PONLY:-203647190}      # ..._PORTRAIT_ONLY
 FL_ID_ANYORIENT=${FL_ID_ANYORIENT:-310816437}  # Android 14+
 COMPAT_BUDGET=120             # saniye (boot'u bekletmemek icin butce)
@@ -1129,7 +1129,7 @@ fl_app_stop() { am force-stop "$1" > /dev/null 2>&1; }
 fl_app_restart() {
     FL_CTX=fl_app_restart; FL_LINE=${LINENO:-0}
     _rp=$1
-    fl_app_stop "$_rp"
+    fl_app_stop "$_rp" || return 1
     sleep 1
     fl_app_start "$_rp"
 }
@@ -3059,7 +3059,7 @@ fl_id_should_off() {
 #   OVERRIDE_MIN_ASPECT_RATIO (KAPICI) ......... 174042980
 #   OVERRIDE_MIN_ASPECT_RATIO_LARGE (16:9) ..... 180326787
 #   OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY .... 203647190
-#   OVERRIDE_MIN_ASPECT_RATIO_MEDIUM ........... 180326787 (A13'te LARGE ile ayni aile)
+#   OVERRIDE_MIN_ASPECT_RATIO_MEDIUM ........... 180326845
 #   OVERRIDE_ANY_ORIENTATION_TO_USER (A14+) .... 310816437
 # ESKI HATA: her ad "${COMPAT_ID}" (174042936) degerine esleniyordu. Yani
 # "enable LARGE" + "disable PORTRAIT_ONLY" AYNI change id'yi yaziyordu ve
@@ -3072,7 +3072,7 @@ fl_id_num() {   # $1 kimlik adi -> change id (sayisal)
         FORCE_RESIZE_APP)                        echo "${COMPAT_ID:-174042936}" ;;
         OVERRIDE_MIN_ASPECT_RATIO)               echo "${FL_ID_GATE:-174042980}" ;;
         OVERRIDE_MIN_ASPECT_RATIO_LARGE)         echo "${FL_ID_LARGE:-180326787}" ;;
-        OVERRIDE_MIN_ASPECT_RATIO_MEDIUM)        echo "${FL_ID_MEDIUM:-180326787}" ;;
+        OVERRIDE_MIN_ASPECT_RATIO_MEDIUM)        echo "${FL_ID_MEDIUM:-180326845}" ;;
         OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY) echo "${FL_ID_PONLY:-203647190}" ;;
         OVERRIDE_ANY_ORIENTATION_TO_USER)        echo "${FL_ID_ANYORIENT:-310816437}" ;;
         *)  # bilinmeyen ad: ROM'un kendi haritasindan oku, yoksa kapici
@@ -3455,7 +3455,7 @@ fl_revert_pkg() {   # $1 = paket  [$2 = "never" ise dokunma listesine ekle]
     [ -n "$_rv" ] || return 1
     _r=$(fl_reset_pkg_ids "$_rv")          # 4 saglayici + dogrulama
     fl_xml_drop_pkg "$_rv"
-    fl_appmode_clear "$_rv" > /dev/null 2>&1   # v2.19: oran katmani da geri alinir (eksikti!)
+    _rv_appmode=$(fl_appmode_clear "$_rv" 2>/dev/null); _rv_appmode_rc=$?
     _mclr=$(fl_miui_clear "$_rv")          # v2.11+v2.20: mailbox/yatay kural + canli (tam|kismi|fail)
     # v2.19: MIUI dosyalarinda satirimiz KALDI mi diye GERI OKU.
     # Kalmissa "temiz" demek yalan olur -> HATA don.
@@ -3479,9 +3479,15 @@ fl_revert_pkg() {   # $1 = paket  [$2 = "never" ise dokunma listesine ekle]
         grep -vx "$_rv" "$FL_DONE" > "$FL_DONE.tmp" 2>/dev/null
         mv -f "$FL_DONE.tmp" "$FL_DONE" 2>/dev/null
     fi
+    am force-stop "$_rv" >/dev/null 2>&1
+    if [ "$_rv_appmode_rc" != 0 ]; then
+        fl_appmode_state_set "$_rv" fail "geri-alinamadi"
+        fl_compat_status_set "$_rv" fail "geri-alinamadi"
+        echo "HATA|oran-geri-alinamadi:$_rv_appmode"
+        return 1
+    fi
     fl_appmode_del "$_rv"
     fl_appmode_state_set "$_rv" ok "geri-alindi"
-    am force-stop "$_rv" >/dev/null 2>&1
     if [ "$_r" = "temiz" ]; then
         fl_compat_status_set "$_rv" fail "geri-alindi"
         # v2.20: canli kural dusuruldu mu, o da hukumde yazar. "kismi" =
@@ -3535,6 +3541,10 @@ fl_am_cmd() {   # $1 enable|disable|reset  $2 id  $3 paket ; basarili -> stdout:
     _ac_try() {   # $1 etiket ; geri kalan = komut
         _at_l=$1; shift
         _at_o=$("$@" 2>&1 </dev/null); _at_rc=$?
+        if [ "$_at_rc" != 0 ]; then
+            fl_evt WARN "$*" "$_at_rc" "$_at_o" "$_ap_evt" "yontem=$_at_l denendi, olmadi"
+            return 1
+        fi
         case "$_at_o" in
             *"nknown"*|*"rror"*|*"xception"*|*"ailed"*|*"ot found"*|*"Usage"*|"")
                 fl_evt WARN "$*" "$_at_rc" "$_at_o" "$_ap_evt" "yontem=$_at_l denendi, olmadi"
@@ -3636,25 +3646,23 @@ fl_appmode_apply() {   # $1 paket -> "ok|<yontemler>" | "fail|<sebep>" (return 1
 
 fl_appmode_clear() {   # $1 paket -> her seyi fabrika degerine dondur
     FL_CTX=fl_appmode_clear; FL_LINE=${LINENO:-0}
-    # v2.23 DUZELTME: burada OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY
-    # TEKRAR ACILIYOR (MIUI varsayilani). Sonra fl_revert_pkg -> fl_reset_pkg_ids
-    # "geri alindi mi?" diye bakinca bu id'i "acik" goruyor ve arayuz
-    # kirmizi "hata / geri-alinamadi" rozeti basiyordu. Artik reset
-    # listesi "kapali olmasi gereken" id'lerle sinirli; PORTRAIT_ONLY
-    # acik kalmasi gereken id olarak isaretli (bkz. fl_id_should_off).
+    # Override'lari ROM varsayilanina sifirla; varsayilani tahmin ederek
+    # PORTRAIT_ONLY'yi zorla acmak kullanicinin eski durumunu degistiriyordu.
     _ap=$1
     [ -n "$_ap" ] || { echo "fail|paket-yok"; return 1; }
     _n=0; _f=0
     for _id in $FL_AM_LIST; do
-        if fl_id_should_off "$_id"; then
-            if fl_am_cmd reset "$_id" "$_ap" > /dev/null 2>&1; then _n=$((_n + 1)); else _f=$((_f + 1)); fi
+        # ANY_ORIENTATION_TO_USER Android 14+; Android 13'te tanimli degil.
+        if [ "$_id" = OVERRIDE_ANY_ORIENTATION_TO_USER ]; then
+            _clear_sdk=$(getprop ro.build.version.sdk 2>/dev/null)
+            case "$_clear_sdk" in ''|*[!0-9]*) _clear_sdk=33 ;; esac
+            [ "$_clear_sdk" -ge 34 ] || continue
         fi
+        if fl_am_cmd reset "$_id" "$_ap" > /dev/null 2>&1; then _n=$((_n + 1)); else _f=$((_f + 1)); fi
     done
-    # PORTRAIT_ONLY varsayilan olarak ACIK
-    fl_am_cmd enable OVERRIDE_MIN_ASPECT_RATIO_PORTRAIT_ONLY "$_ap" > /dev/null 2>&1
     # v2.14: "yay" kapatmak SADECE oran katmanini geri alir. MIUI mailbox /
     # yatay kurali ayri katmandir; onu silen yol kapat-hepsi / geri-al'dir.
-    if [ "$_f" -gt 0 ]; then echo "kismi|reset:$_n hata:$_f"; else echo "ok|reset:$_n"; fi
+    if [ "$_f" -gt 0 ]; then echo "kismi|reset:$_n hata:$_f"; return 1; else echo "ok|reset:$_n"; fi
 }
 
 fl_appmode_state_set() {   # pkg  ok|fail  yontem

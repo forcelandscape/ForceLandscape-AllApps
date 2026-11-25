@@ -449,7 +449,12 @@ async function out(args){
   let t = r.stdout || "";
   const err = r.stderr || "";
   if(err && String(err).trim()) t += (t ? "\n" : "") + "[stderr] " + String(err).trim();
-  if(!t && r.errno) t = "(boş çıktı, kod " + r.errno + ")";
+  // SONUC raporlari (ornegin kesin test) hata koduyla birlikte ayrintili
+  // kanit tasir; diger basarisizliklar sessizce basari sayilmamalidir.
+  if(r.errno && !/^SONUC\|/m.test(t)) {
+    const detail = String(t || err || "boş çıktı").trim();
+    throw new Error("komut başarısız (kod " + r.errno + "): " + detail.slice(0, 400));
+  }
   return t;
 }
 function kvParse(txt){
@@ -1676,8 +1681,9 @@ async function setAppMode(pkg, on){
     try{ const v = kvParse(await out("verify " + sq(pkg))); gercek = v.pencere || ""; }catch(e){}
     if(on){
       toast(nm + (gercek.indexOf("orta|") === 0
-        ? " → ayar açıldı ama MIUI hâlâ ortada tutuyor (orta pencereyi kapat)"
-        : " → ekrana yayıldı"));
+        ? " → ayar gönderildi, ama MIUI hâlâ ortada tutuyor"
+        : gercek === "tam" ? " → ayar gönderildi; pencere tam ekran görünüyor"
+        : " → ayar gönderildi; ekran sonucu doğrulanamadı"));
     } else {
       toast(nm + " → eski hâline döndü");
     }
@@ -2077,7 +2083,7 @@ const ACT = {
       }
       await loadApps();
       if(hata){ toast("bazıları olmadı: " + hata); return; }
-    }catch(e){ toast(e.message||e); }
+    }catch(e){ busyEnd(); await render(); toast("toplu işlem tamamlanamadı: " + (e.message||e)); return; }
     busyEnd(); await render(); toast(list.length + " uygulama: yatay zorla");
   },
 
@@ -2095,8 +2101,8 @@ const ACT = {
         i += 15;
       }
       await loadApps();
-      if(hata) toast("bazıları olmadı: " + hata);
-    }catch(e){ toast(e.message||e); }
+      if(hata){ busyEnd(); await render(); toast("bazıları olmadı: " + hata); return; }
+    }catch(e){ busyEnd(); await render(); toast("toplu işlem tamamlanamadı: " + (e.message||e)); return; }
     busyEnd(); await render(); toast(list.length + " uygulama: dokunma");
   },
 
@@ -2248,25 +2254,31 @@ const ACT = {
     if(!await askConfirm("Modül duraklatılsın mı?",
         "Yön ve letterbox ayarları geri alınır, modül açılışta hiçbir şey yapmaz. Geri açmak için Ayarlar → Devam et.")) return;
     busyStart("duraklatılıyor…");
-    try{ await out("pause"); }catch(e){}
+    let result;
+    try{ await out("pause"); result = "duraklatıldı — yeniden başlat"; }
+    catch(e){ result = "duraklatılamadı: " + (e.message||e); }
     try{ await loadStatus(); }catch(e){}
-    busyEnd(); await render(); toast("duraklatıldı — yeniden başlat");
+    busyEnd(); await render(); toast(result);
   },
 
   async resume(){
     busyStart("devam ettiriliyor…");
-    try{ await out("resume"); }catch(e){}
+    let result;
+    try{ await out("resume"); result = "etkin — yeniden başlat"; }
+    catch(e){ result = "etkinleştirilemedi: " + (e.message||e); }
     try{ await loadStatus(); }catch(e){}
-    busyEnd(); await render(); toast("etkin — yeniden başlat");
+    busyEnd(); await render(); toast(result);
   },
 
   async restore(){
     if(!await askConfirm("Her şey geri alınsın mı?",
         "Letterbox düzeltmeleri ve yön ayarları tamamen kaldırılır. Tablet fabrika davranışına döner.")) return;
     busyStart("geri alınıyor…");
-    try{ await out("restore"); }catch(e){}
-    busyEnd(); await loadStatus(); await loadApps(); CSTAT = [];
-    await render(); toast("her şey geri alındı");
+    let result;
+    try{ await out("restore"); result = "geri alma komutu tamamlandı; durumları kontrol et"; }
+    catch(e){ result = "geri alma tamamlanamadı: " + (e.message||e); }
+    busyEnd(); try{ await loadStatus(); await loadApps(); }catch(e){} CSTAT = [];
+    await render(); toast(result);
   },
 
   async backup(){
@@ -2342,8 +2354,10 @@ document.addEventListener("click", async ev=>{
   if(d.logn){ LOGN = parseInt(d.logn,10) || 300; await render(); return; }
   if(d.mode){
     busyStart("mod değiştiriliyor…");
-    try{ await out("mode " + d.mode); await loadStatus(); await loadApps(); }catch(e){ toast(e.message||e); }
-    busyEnd(); await render(); toast("mod: " + d.mode); return;
+    let result;
+    try{ await out("mode " + d.mode); await loadStatus(); await loadApps(); result = "mod kaydedildi: " + d.mode + " (uygulamak için Şimdi uygula)"; }
+    catch(e){ result = "mod değişmedi: " + (e.message||e); }
+    busyEnd(); await render(); toast(result); return;
   }
   if(d.rotate){
     busyStart("yön uygulanıyor…");
@@ -2412,7 +2426,7 @@ document.addEventListener("click", async ev=>{
       const r = await out("fullscreen " + sq(d.fullscreen));
       const bad = String(r||"").split("\n").find(l => l.startsWith("HATA"));
       if(bad) throw new Error(bad.replace(/^HATA\|/,"").replace(/\|/g," · "));
-      toast(appName(d.fullscreen) + " → tam ekran ✓");
+      toast(appName(d.fullscreen) + (String(r).includes("|olculemedi|") ? " → komut gönderildi; sonuç ölçülemedi" : " → tam ekran doğrulandı"));
       LAST_OP = "tam ekran: " + d.fullscreen + " · " + new Date().toLocaleTimeString("tr-TR");
     }catch(e){
       const m = String((e && e.message) || e);
@@ -2493,7 +2507,7 @@ document.addEventListener("click", async ev=>{
       const r = await out("mailbox " + sq(d.mailbox) + " ac");
       const bad = String(r||"").split("\n").find(l => l.startsWith("HATA"));
       if(bad) throw new Error(bad.replace(/^HATA\|/,""));
-      toast(appName(d.mailbox) + " → mailbox kapalı ✓ · şimdi “↻ yeniden başlat”");
+      toast(appName(d.mailbox) + " → " + String(r).split("\n")[0].replace(/\|/g, " · ") + " · uygulamayı yeniden başlat");
       LAST_OP = "mailbox kapatıldı: " + d.mailbox;
     }catch(e){ toast("olmadı: " + (e.message || e)); }
     busyEnd(); await render();
