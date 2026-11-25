@@ -1,5 +1,7 @@
 # Force Landscape - All Apps v2.23.5-test1
 
+[ZIP indir / Download ZIP](https://github.com/forcelandscape/ForceLandscape-AllApps/raw/refs/heads/arena/3cefd74e-forcelandscape-allapps/ForceLandscape-AllApps-v2.23.5-test1.zip)
+
 ## Türkçe
 
 **Bu bir deneme sürümüdür; son değişiklikler Xiaomi Pad 6 / MIUI 14 üzerinde henüz doğrulanmadı.** Kurulumdan önce modül ve sistem ayarlarınızın yedeğini saklayın. Mevcut rapor v2.23.3 içindir, bu sürümün cihaz testi değildir. Bazı MIUI mailbox, uygulama bazlı geri alma ve önceki sistem değerlerini koruma senaryoları halen açıktır.
